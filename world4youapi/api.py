@@ -151,9 +151,15 @@ class Package:
 class MyWorld4You:
 
     def __init__(self):
-        self._session = requests.session()
+        self._session = requests.Session()
         self._customer_id = None
         self._packages = []
+
+    def __del__(self):
+        log.debug('Logging out.')
+        self.logout()
+        log.debug('Closing session.')
+        self._session.close()
 
     def get(self, path: str) -> requests.Response:
         return self._session.get(f'{API_URL}{path}')
@@ -165,6 +171,7 @@ class MyWorld4You:
                                   allow_redirects=allow_redirects)
 
     def login(self, user_nr: int, password: str, otp: str = None) -> LoginResult:
+        log.debug(f'Logging in as {user_nr}')
         r = self.get('/login')
         inputs = parse_form(r.text, f'<form action="{API_URL}/login" id="loginForm"')
         auth = {'_username': str(user_nr), '_password': str(password), '_csrf_token': inputs['_csrf_token']['value']}
@@ -175,6 +182,7 @@ class MyWorld4You:
         res = json.loads(r.text)
 
         if r.status_code == 200 and res['success']:
+            log.debug(f'Successfully logged in as {user_nr}')
             self._customer_id = user_nr
             self.load_packages()
             return LoginResult.SUCCESS
@@ -187,7 +195,12 @@ class MyWorld4You:
             log.error(f'{r.status_code} {r.reason}')
         return LoginResult.AUTH_FAILED
 
+    def logout(self) -> bool:
+        r = self.get('/logout')
+        return r.status_code == 200
+
     def load_packages(self) -> List[Package]:
+        log.debug('Loading available packages.')
         self._packages.clear()
         r = self.get('/')
 
@@ -202,14 +215,19 @@ class MyWorld4You:
         ul = [SPACES.sub(' ', HTML_TAG.sub(' ', li)).strip().split(' ') for li in LI_TAG.findall(r.text[ul_p1:ul_p2])]
 
         domains = [(li[0], li[1:-1], int(li[-1])) for li in ul]
+        log.debug(f'Found {len(domains)} domain(s): ')
+        for i, d in enumerate(domains):
+            log.debug(f'({i:d}) {d}')
 
         for p_domain, p_type, p_id in domains:
             package = Package(p_id, p_domain, p_type)
             self._packages.append(package)
             self.load_resource_records(package)
+            log.debug(package)
         return self.packages
 
     def load_resource_records(self, package: Package) -> List[ResourceRecord]:
+        log.debug(f'Loading resource records for {package}')
         if package not in self._packages:
             raise KeyError(f'Can not load resource records from foreign package')
 
@@ -350,13 +368,6 @@ class MyWorld4You:
             raise RuntimeError(msg)
         else:
             raise RuntimeError(f'Unknown error: {r.status_code} {r.reason}')
-
-    def get_cookies(self) -> Dict[str, str]:
-        return {'W4YSESSID': self.session_id}
-
-    @property
-    def session_id(self) -> str:
-        return self._session_id
 
     @property
     def customer_id(self) -> str:
