@@ -138,22 +138,22 @@ class MyWorld4YouCli:
         if len(cmd_args) != 0:
             log.error("usage: help")
         else:
-            log.error("Commands: ")
-            log.error("  help")
-            log.error("  list / table [full]")
-            log.error("  reload")
-            log.error("  exit / quit")
-            log.error("  add <fqdn> <dns-type> <value>")
-            log.error("  update <fqdn> [<dns-type> [<old-value>]] <new-value>")
-            log.error("  alter <fqdn> <old-dns-type> <old-value> <new-dns-type> [<new-value>]")
-            log.error("  delete <fqdn> [<dns-type> [<value>]]")
+            log.info("Commands: ")
+            log.info("  help")
+            log.info("  list / table [full]")
+            log.info("  reload")
+            log.info("  exit / quit")
+            log.info("  add <fqdn> <dns-type> <value>")
+            log.info("  update <fqdn> [<dns-type> [<old-value>]] <new-value>")
+            log.info("  alter <fqdn> <old-dns-type> <old-value> <new-dns-type> [<new-value>]")
+            log.info("  delete <fqdn> [<dns-type> [<value>]]")
 
     @staticmethod
     def quit(*cmd_args):
         if len(cmd_args) != 0:
             log.error("usage: world4you quit")
             return False
-        log.error("Goodbye!")
+        log.info("Goodbye!")
         sys.exit(0)
 
     def interactive(self):
