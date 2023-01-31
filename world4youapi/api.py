@@ -214,7 +214,7 @@ class MyWorld4You:
 
         ul = [SPACES.sub(' ', HTML_TAG.sub(' ', li)).strip().split(' ') for li in LI_TAG.findall(r.text[ul_p1:ul_p2])]
 
-        domains = [(li[0], li[1:-1], int(li[-1])) for li in ul]
+        domains = [(li[0], ' '.join(li[1:-1]), int(li[-1])) for li in ul]
         log.debug(f'Found {len(domains)} domain(s): ')
         for i, d in enumerate(domains):
             log.debug(f'({i:d}) {d}')
