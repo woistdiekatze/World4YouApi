@@ -1,11 +1,13 @@
-
 from __future__ import annotations
-from typing import Dict, List
-import requests
-import re
-import json
-import sys
 
+import logging
+import json
+import re
+from typing import Dict, List
+
+import requests
+
+log = logging.getLogger(__name__)
 
 API_URL = 'https://my.world4you.com/en'
 KEY_VALUE = re.compile(r'([^=\s<>]+)(="([^"]*)")?')
@@ -69,6 +71,7 @@ def get_form_error_message(page: str) -> str or None:
 
 
 class ResourceRecord:
+
     def __init__(self, rr_type: str, fqdn: str, value: str, prio: int = None, rr_id: str = None):
         self._type = rr_type.upper()
         self._fqdn = fqdn.lower()
@@ -97,13 +100,15 @@ class ResourceRecord:
         return self._id
 
     def __str__(self) -> str:
-        return f'<ResourceRecord{{{self.type}:{str(self.prio) + " " if self.prio is not None else ""}{self.fqdn}:{self.value}}}>'
+        prio = f'{self.prio:d}' if self.prio is not None else ''
+        return f'<ResourceRecord{{{self.type}:{prio}{self.fqdn}:{self.value}}}>'
 
     def __repr__(self) -> str:
         return self.__str__()
 
 
 class Package:
+
     def __init__(self, package_id: int, domain: str, package_type: str):
         self._id = package_id
         self._type = package_type
@@ -134,6 +139,7 @@ class Package:
 
 
 class MyWorld4You:
+
     def __init__(self):
         self._session = requests.session()
         self._customer_id = None
@@ -143,30 +149,30 @@ class MyWorld4You:
         return self._session.get(f'{API_URL}{path}')
 
     def post(self, path: str, data, allow_redirects: bool = True) -> requests.Response:
-        return self._session.post(f'{API_URL}{path}', data, headers={'X-Requested-With': 'XMLHttpRequest'},
+        return self._session.post(f'{API_URL}{path}',
+                                  data,
+                                  headers={'X-Requested-With': 'XMLHttpRequest'},
                                   allow_redirects=allow_redirects)
 
-    def login(self, user_nr: int, password: str) -> bool:
+    def login(self, user_nr: int, password: str, otp: str = None) -> bool:
         r = self.get('/login')
         inputs = parse_form(r.text, f'<form action="{API_URL}/login" id="loginForm"')
+        auth = {'_username': str(user_nr), '_password': str(password), '_csrf_token': inputs['_csrf_token']['value']}
+        if otp is not None:
+            auth.update({f'_tfa{i}': tfai for i, tfai in enumerate(otp, 1)})
 
-        r = self.post('/login', {
-            '_username': str(user_nr),
-            '_password': str(password),
-            '_csrf_token': inputs['_csrf_token']['value']
-        })
+        r = self.post('/login', auth)
         res = json.loads(r.text)
 
         if r.status_code == 200 and res['success']:
             self._customer_id = user_nr
             self.load_packages()
             return True
+        elif res['message'] is not None:
+            log.error(f'{r.status_code} {r.reason}: {res["message"]}')
         else:
-            if res['message'] is not None:
-                print(f'{r.status_code} {r.reason}: {res["message"]}', file=sys.stderr)
-            else:
-                print(f'{r.status_code} {r.reason}', file=sys.stderr)
-            return False
+            log.error(f'{r.status_code} {r.reason}')
+        return False
 
     def load_packages(self) -> List[Package]:
         self._packages.clear()
@@ -182,7 +188,8 @@ class MyWorld4You:
 
         ul = [SPACES.sub(' ', HTML_TAG.sub(' ', li)).strip().split(' ') for li in LI_TAG.findall(r.text[ul_p1:ul_p2])]
 
-        domains = [(li[0], li[1][:-1], int(li[2])) for li in ul]
+        domains = [(li[0], li[1:-1], int(li[-1])) for li in ul]
+
         for p_domain, p_type, p_id in domains:
             package = Package(p_id, p_domain, p_type)
             self._packages.append(package)
@@ -207,10 +214,7 @@ class MyWorld4You:
         package._resource_records.clear()
         for rr in data_records:
             package._resource_records.append(
-                ResourceRecord(rr['type'],
-                               rr['name'],
-                               rr['value'],
-                               rr['prio'] if len(rr['prio']) > 0 else None,
+                ResourceRecord(rr['type'], rr['name'], rr['value'], rr['prio'] if len(rr['prio']) > 0 else None,
                                rr['id']))
         return package._resource_records
 
@@ -225,7 +229,10 @@ class MyWorld4You:
             if fqdn.endswith('.' + p.domain) or fqdn == p.domain:
                 return p
 
-    def get_resource_record(self, fqdn: str, rr_type: str = None, value: str = None,
+    def get_resource_record(self,
+                            fqdn: str,
+                            rr_type: str = None,
+                            value: str = None,
                             prio: int = None) -> ResourceRecord:
         matches = self.get_resource_records(fqdn, rr_type, value, prio)
         if len(matches) == 0:
@@ -235,7 +242,10 @@ class MyWorld4You:
         else:
             return matches[0]
 
-    def get_resource_records(self, fqdn: str, rr_type: str = None, value: str = None,
+    def get_resource_records(self,
+                             fqdn: str,
+                             rr_type: str = None,
+                             value: str = None,
                              prio: int = None) -> List[ResourceRecord]:
         matches = []
         for p in self.packages:
@@ -247,8 +257,12 @@ class MyWorld4You:
                     matches.append(rr)
         return matches
 
-    def update_resource_record(self, resource_record: ResourceRecord, new_value: str = None, new_fqdn: str = None,
-                               new_type: str = None, new_prio: int = None) -> bool:
+    def update_resource_record(self,
+                               resource_record: ResourceRecord,
+                               new_value: str = None,
+                               new_fqdn: str = None,
+                               new_type: str = None,
+                               new_prio: int = None) -> bool:
         package = self.get_package_by_fqdn(resource_record.fqdn)
         r = self.get(f'/{package.id}/dns')
         inputs = parse_form(r.text, '<form name="EditDnsRecordForm"', '</form>')
@@ -261,7 +275,8 @@ class MyWorld4You:
             'EditDnsRecordForm[id]': resource_record.id,
             'EditDnsRecordForm[uniqueFormIdDP]': inputs['EditDnsRecordForm[uniqueFormIdDP]']['value'],
             'EditDnsRecordForm[_token]': inputs['EditDnsRecordForm[_token]']['value']
-        }, allow_redirects=False)
+        },
+                      allow_redirects=False)
 
         if r.status_code == 302:
             self.load_packages()
@@ -283,7 +298,8 @@ class MyWorld4You:
             'DeleteDnsRecordForm[recordId]': resource_record.id,
             'DeleteDnsRecordForm[uniqueFormIdDP]': inputs['DeleteDnsRecordForm[uniqueFormIdDP]']['value'],
             'DeleteDnsRecordForm[_token]': inputs['DeleteDnsRecordForm[_token]']['value']
-        }, allow_redirects=False)
+        },
+                      allow_redirects=False)
 
         if r.status_code == 302:
             self.load_packages()
@@ -308,7 +324,8 @@ class MyWorld4You:
             'AddDnsRecordForm[value]': str(value),
             'AddDnsRecordForm[uniqueFormIdDP]': inputs['AddDnsRecordForm[uniqueFormIdDP]']['value'],
             'AddDnsRecordForm[_token]': inputs['AddDnsRecordForm[_token]']['value']
-        }, allow_redirects=False)
+        },
+                      allow_redirects=False)
 
         if r.status_code == 302:
             self.load_packages()
