@@ -3,7 +3,7 @@ import sys
 import argparse
 import logging
 
-from .api import MyWorld4You
+from .api import MyWorld4You, LoginResult
 
 logging.basicConfig(level=logging.INFO, filename='w4y.log')
 log = logging.getLogger(__name__)
@@ -19,7 +19,11 @@ class MyWorld4YouCli:
         self._api = api or MyWorld4You()
 
     def login(self, *args, **kwargs):
-        return self._api.login(*args, **kwargs)
+        res = self._api.login(*args, **kwargs)
+        if res == LoginResult.OTP_REQUIRED:
+            otp = input('TOTP: ')
+            return self.login(*args, otp=otp)
+        return res
 
     def add(self, record_name: str = None, record_type: str = None, record_value: str = None, *cmd_args):
         if not record_name or not record_type or not record_value or len(cmd_args) != 0:

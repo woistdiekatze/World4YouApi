@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import logging
 import json
+import logging
 import re
+from enum import Enum, auto
 from typing import Dict, List
 
 import requests
@@ -14,6 +15,15 @@ KEY_VALUE = re.compile(r'([^=\s<>]+)(="([^"]*)")?')
 HTML_TAG = re.compile(r'<[^>]*>')
 SPACES = re.compile(r'[ \t]+')
 LI_TAG = re.compile(r'<li[^>]*>\s*(.*?)\s*</li>')
+
+
+class LoginResult(Enum):
+    SUCCESS = 0
+    OTP_REQUIRED = auto()
+    AUTH_FAILED = auto()
+
+    def __bool__(self) -> bool:
+        return not bool(self.value)
 
 
 def parse_form(page: str, pre: str = '<form', post: str = '</form>') -> Dict[str, Dict[str, str]]:
@@ -154,7 +164,7 @@ class MyWorld4You:
                                   headers={'X-Requested-With': 'XMLHttpRequest'},
                                   allow_redirects=allow_redirects)
 
-    def login(self, user_nr: int, password: str, otp: str = None) -> bool:
+    def login(self, user_nr: int, password: str, otp: str = None) -> LoginResult:
         r = self.get('/login')
         inputs = parse_form(r.text, f'<form action="{API_URL}/login" id="loginForm"')
         auth = {'_username': str(user_nr), '_password': str(password), '_csrf_token': inputs['_csrf_token']['value']}
@@ -167,12 +177,15 @@ class MyWorld4You:
         if r.status_code == 200 and res['success']:
             self._customer_id = user_nr
             self.load_packages()
-            return True
+            return LoginResult.SUCCESS
+        elif r.status_code == 403 and res.get('twoFactorAuthRequired', None) and otp is None:
+            log.error(f'{r.status_code} {r.reason}: One time password required!')
+            return LoginResult.OTP_REQUIRED
         elif res['message'] is not None:
             log.error(f'{r.status_code} {r.reason}: {res["message"]}')
         else:
             log.error(f'{r.status_code} {r.reason}')
-        return False
+        return LoginResult.AUTH_FAILED
 
     def load_packages(self) -> List[Package]:
         self._packages.clear()
