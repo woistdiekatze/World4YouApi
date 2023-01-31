@@ -178,7 +178,7 @@ class MyWorld4You:
             self._customer_id = user_nr
             self.load_packages()
             return LoginResult.SUCCESS
-        elif r.status_code == 403 and res.get('twoFactorAuthRequired', None) and otp is None:
+        elif r.status_code == 403 and res.get('twoFactorAuthRequired') and otp is None:
             log.error(f'{r.status_code} {r.reason}: One time password required!')
             return LoginResult.OTP_REQUIRED
         elif res['message'] is not None:
